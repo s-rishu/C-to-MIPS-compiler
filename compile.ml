@@ -66,7 +66,7 @@ let rec compile_stmt ((s,_):Ast.stmt) : inst list =
       let rec save_actual_args (args: Ast.exp list) (var_pos): inst list = (
         match args with
           | [] -> []
-          | hd :: tl -> (save_actual_args tl (var_pos+1)) @ (compile_stmt (Exp(hd), 0) @ [Add(R3, R1, Immed(Word32.fromInt 4)); Sub(R29, R29, R3); Sw(R2, R29, Word32.fromInt 0)]) (*saving args in reverse order on stack*)
+          | hd :: tl -> (save_actual_args tl (var_pos+1)) @ (compile_stmt (Exp(hd), 0) @ [Add(R3, R0, Immed(Word32.fromInt 4)); Sub(R29, R29, R3); Sw(R2, R29, Word32.fromInt 0)]) (*saving args in reverse order on stack*)
       ) in 
       (save_actual_args args 1) @ 
       [Jal callee] 
@@ -83,14 +83,14 @@ let rec compile_stmt ((s,_):Ast.stmt) : inst list =
         Int(i) -> [Li(R2, Word32.fromInt i)]
         | Var(v) -> (
             let v_offset = Hashtbl.find (!offset_table) v in
-            if (v_offset > 0) then [Lw(R2,R30,Word32.fromInt v_offset)]
-            else [Add(R3, R30, Immed (Word32.fromInt (-v_offset))); Lw(R2,R3,Word32.fromInt 0)])
+            if (v_offset > 0) then [Lw(R2,R30,Word32.fromInt (4*v_offset))]
+            else [Add(R3, R30, Immed (Word32.fromInt (-4*v_offset))); Lw(R2,R3,Word32.fromInt 0)])
         | Binop(e1, b, e2) -> (
             let t = new_temp()
             in (
-                [Add(R3, R1, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
-                (compile_exp e1) @ [Sw(R2,R30,Word32.fromInt (Hashtbl.find (!offset_table) t))]
-                @(compile_exp e2) @ [Lw(R3,R30,Word32.fromInt (Hashtbl.find (!offset_table) t))]
+                [Add(R3, R0, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
+                (compile_exp e1) @ [Sw(R2,R30,Word32.fromInt (4*(Hashtbl.find (!offset_table) t)))]
+                @(compile_exp e2) @ [Lw(R3,R30,Word32.fromInt (4*(Hashtbl.find (!offset_table) t)))]
                 @(match b with
                     Plus -> [Add(R2,R2,Reg R3)]
                     | Minus -> [Sub(R2,R3,R2)]
@@ -108,24 +108,24 @@ let rec compile_stmt ((s,_):Ast.stmt) : inst list =
         | And(e1, e2) -> (
             let t = new_temp()
             in (
-                [Add(R3, R1, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
-                (compile_exp e1) @ [Sw(R2,R30,Word32.fromInt (Hashtbl.find (!offset_table) t))]
-                @(compile_exp e2) @ [Lw(R3,R30,Word32.fromInt (Hashtbl.find (!offset_table) t))]
+                [Add(R3, R0, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
+                (compile_exp e1) @ [Sw(R2,R30,Word32.fromInt (4*(Hashtbl.find (!offset_table) t)))]
+                @(compile_exp e2) @ [Lw(R3,R30,Word32.fromInt (4*(Hashtbl.find (!offset_table) t)))]
                 @ [And(R2,R2,Reg R3)]
             ))               
         | Or(e1, e2) -> (
             let t = new_temp()
             in (
-                [Add(R3, R1, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
-                (compile_exp e1) @ [Sw(R2,R30,Word32.fromInt (Hashtbl.find (!offset_table) t))]
-                @(compile_exp e2) @ [Lw(R3,R30,Word32.fromInt (Hashtbl.find (!offset_table) t))]
+                [Add(R3, R0, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
+                (compile_exp e1) @ [Sw(R2,R30,Word32.fromInt (4*(Hashtbl.find (!offset_table) t)))]
+                @(compile_exp e2) @ [Lw(R3,R30,Word32.fromInt (4*(Hashtbl.find (!offset_table) t)))]
                 @ [Or(R2,R2,Reg R3); Li(R3, Word32.fromInt 0); Sgt(R2,R2,R3)]
             ))                 
         (* | Assign(v, e) when v="b"-> (compile_exp e) @ [La(R3,"z"); Sw(R2,R3,Word32.fromInt 0)] *)
         | Assign(v, e)-> (
             let v_offset = Hashtbl.find (!offset_table) v in
-            (compile_exp e) @ (if (v_offset > 0) then [Sw(R2,R30,Word32.fromInt v_offset)]
-            else [Add(R3, R30, Immed(Word32.fromInt (-v_offset))); Sw(R2,R3,Word32.fromInt 0)])
+            (compile_exp e) @ (if (v_offset > 0) then [Sw(R2,R30,Word32.fromInt (4*v_offset))]
+            else [Add(R3, R30, Immed(Word32.fromInt (-4*v_offset))); Sw(R2,R3,Word32.fromInt 0)])
           )
         | Call(fn_name, fn_args) -> (caller_prologue fn_name fn_args) @ (caller_epilogue fn_args)
     in( 
@@ -149,7 +149,7 @@ let rec compile_stmt ((s,_):Ast.stmt) : inst list =
             [Bne(R2,R0,top_l)]
             )
         | For(exp1, exp2, exp3, stmt) -> compile_stmt (Seq((Exp exp1, 0),(While(exp2,(Seq(stmt,(Exp exp3, 0)), 0)), 0)), 0)
-        | Return(exp) -> (compile_exp exp) @ [Jr(R31)]
+        | Return(exp) -> (compile_exp exp) @ [Sub(R4, R2, R0)] (*also copy return value to a0*)
         | Let(v, exp, stmt) -> (compile_exp (Assign(v, exp),0)) @ (compile_stmt stmt)
     )
 
@@ -159,7 +159,7 @@ let callee_prologue (fn: Ast.funcsig): inst list = (
   let _ = (collect_vars_count fn.body) in
   let stack_size = 4 * ( 2 + !var_count) in
     (* create fn label, set new sp, save fp in temp R3, set new fp, save ra, save fp*)
-      [Label(fn.name); Add(R3, R1, Immed(Word32.fromInt stack_size)); Sub(R29, R29, R3); Sw(R30, R3, Word32.fromInt 0);
+      [Label(fn.name); Add(R3, R0, Immed(Word32.fromInt stack_size)); Sub(R29, R29, R3); Sub(R3, R30, R0);
       Add(R30, R29, Immed(Word32.fromInt (stack_size-4)));
       Sw(R31, R30, Word32.fromInt 0); (*skipping saved registers*)
       Sw(R3, R30, Word32.fromInt 4);
