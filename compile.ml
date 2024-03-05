@@ -12,12 +12,6 @@ let new_int() = (label_counter := (!label_counter) + 1; !label_counter)
 let new_label() = "L" ^ (string_of_int (new_int()))
 let var_count = ref 0
 let new_offset_table() = (Hashtbl.create 50)
-(* generate a fresh temporary variable and store it in the variables set. *)
-(* let rec new_temp() = 
-    let t = "T" ^ (string_of_int (new_int())) in
-    (* make sure we don't already have a variable with the same name! *)
-    if (Hashtbl.mem (!offset_table) t) then new_temp()
-    else (var_count := (!var_count) + 1; Hashtbl.add (!offset_table) t (-(!var_count)); t) *)
 
 let reset() = (var_count := 0)
 let rec set_args_offset (args: Ast.var list) (var_pos) (offset_table) = 
@@ -58,11 +52,6 @@ let rec collect_vars_count (p : Ast.stmt) offset_table = (
 let rec compile_stmt ((s,_):Ast.stmt) (offset_table) : inst list = 
     let caller_prologue (callee: label) (args: Ast.exp list): inst list = (
       (* pass arguments, skip saving registers for now, jump and link *)
-      (* [Sub(R29, R29, 4); Sw(R4, R29, Word32.fromInt 0);
-      Sub(R29, R29, 4); Sw(R5, R29, Word32.fromInt 0);
-      Sub(R29, R29, 4); Sw(R6, R29, Word32.fromInt 0);
-      Sub(R29, R29, 4); Sw(R7, R29, Word32.fromInt 0);] @ *)
-      (* generates mips code to save first four function actual args on the registers and others on stack *)
       let callee = if (callee = "add") then "add_" else callee in
       let rec save_actual_args (args: Ast.exp list): inst list = (
         match args with
@@ -83,14 +72,10 @@ let rec compile_stmt ((s,_):Ast.stmt) (offset_table) : inst list =
     match e with
         Int(i) -> [Li(R2, Word32.fromInt i)]
         | Var(v) -> (
-            (* print_string v;
-            print_int (1); *)
             let v_offset = Hashtbl.find (offset_table) v in
             if (v_offset > 0) then [Lw(R2,R30,Word32.fromInt (4*v_offset))]
             else [Lw(R2,R30,Word32.fromInt (4*(-1+v_offset)))])
         | Binop(e1, b, e2) -> (
-            (* let t = new_temp()
-            in ( *)
             [Add(R3, R0, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
             (compile_exp e1) @ [Sw(R2,R29,Word32.fromInt (0)) (*push temp*)]
             @(compile_exp e2) @ [Lw(R3,R29,Word32.fromInt (0)); Add(R29, R29, Immed(Word32.fromInt 4))(*pop temp*)]
@@ -108,22 +93,17 @@ let rec compile_stmt ((s,_):Ast.stmt) (offset_table) : inst list =
             ))
         | Not(e) -> (compile_exp e) @ [Seq(R2,R2,R3)]                    
         | And(e1, e2) -> (
-            (* let t = new_temp()
-            in ( *)
             [Add(R3, R0, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
             (compile_exp e1) @ [Sw(R2,R29,Word32.fromInt (0)) (*push temp*)]
             @(compile_exp e2) @ [Lw(R3,R29,Word32.fromInt (0)); Add(R29, R29, Immed(Word32.fromInt 4))(*pop temp*)]
             @ [And(R2,R2,Reg R3)]
             )              
         | Or(e1, e2) -> (
-            (* let t = new_temp()
-            in ( *)
             [Add(R3, R0, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
             (compile_exp e1) @ [Sw(R2,R29,Word32.fromInt (0)) (*push temp*)]
             @(compile_exp e2) @ [Lw(R3,R29,Word32.fromInt (0)); Add(R29, R29, Immed(Word32.fromInt 4))(*pop temp*)]
             @ [Or(R2,R2,Reg R3); Li(R3, Word32.fromInt 0); Sgt(R2,R2,R3)]
             )                 
-        (* | Assign(v, e) when v="b"-> (compile_exp e) @ [La(R3,"z"); Sw(R2,R3,Word32.fromInt 0)] *)
         | Assign(v, e)-> (
             let v_offset = Hashtbl.find (offset_table) v in
             (compile_exp e) @ (if (v_offset > 0) then [Sw(R2,R30,Word32.fromInt (4*(v_offset)))]
@@ -163,10 +143,6 @@ let callee_prologue (fn: Ast.funcsig) = (
   let offset_table = (collect_vars_count fn.body offset_table) in
   let stack_size = 4 * ( 2 + !var_count) in
   let fn_name = if (fn.name = "add") then "add_" else fn.name in
-      (* Printf.printf "%d " !var_count;
-      Printf.printf "%d " (Hashtbl.length (offset_table)); *)
-      (* Printf.printf "%d " (Hashtbl.find (offset_table) "x");
-      Printf.printf "%d " (Hashtbl.find (offset_table) "y"); *)
     (* create fn label, set new sp, save fp in temp R3, set new fp, save ra, save fp*)
       ([Label(fn_name); Add(R3, R0, Immed(Word32.fromInt stack_size)); Sub(R29, R29, R3); Sub(R3, R30, R0);
       Add(R30, R29, Immed(Word32.fromInt (stack_size-4)));
@@ -181,7 +157,6 @@ let callee_epilogue (): inst list = (
 )
 
 let rec compile (p : Ast.program) : result = 
-    (* print_string "hello1"; *)
     let rec compile_fn (p : Ast.program) =
       (match p with
       | [] -> []
