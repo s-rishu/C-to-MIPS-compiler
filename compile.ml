@@ -63,6 +63,7 @@ let rec compile_stmt ((s,_):Ast.stmt) (offset_table) : inst list =
       Sub(R29, R29, 4); Sw(R6, R29, Word32.fromInt 0);
       Sub(R29, R29, 4); Sw(R7, R29, Word32.fromInt 0);] @ *)
       (* generates mips code to save first four function actual args on the registers and others on stack *)
+      let callee = if (callee = "add") then "add_" else callee in
       let rec save_actual_args (args: Ast.exp list): inst list = (
         match args with
           | [] -> []
@@ -161,12 +162,13 @@ let callee_prologue (fn: Ast.funcsig) = (
   let offset_table = set_args_offset fn.args 1 offset_table in 
   let offset_table = (collect_vars_count fn.body offset_table) in
   let stack_size = 4 * ( 2 + !var_count) in
+  let fn_name = if (fn.name = "add") then "add_" else fn.name in
       (* Printf.printf "%d " !var_count;
       Printf.printf "%d " (Hashtbl.length (offset_table)); *)
       (* Printf.printf "%d " (Hashtbl.find (offset_table) "x");
       Printf.printf "%d " (Hashtbl.find (offset_table) "y"); *)
     (* create fn label, set new sp, save fp in temp R3, set new fp, save ra, save fp*)
-      ([Label(fn.name); Add(R3, R0, Immed(Word32.fromInt stack_size)); Sub(R29, R29, R3); Sub(R3, R30, R0);
+      ([Label(fn_name); Add(R3, R0, Immed(Word32.fromInt stack_size)); Sub(R29, R29, R3); Sub(R3, R30, R0);
       Add(R30, R29, Immed(Word32.fromInt (stack_size-4)));
       Sw(R31, R30, Word32.fromInt 0); (*skipping saved registers*)
       Sw(R3, R30, Word32.fromInt (-4));
@@ -175,7 +177,7 @@ let callee_prologue (fn: Ast.funcsig) = (
 
 let callee_epilogue (): inst list = (
   (* reset sp, ra, fp, jump to ra *)
-  [Add(R29, R30, Immed(Word32.fromInt 4)); Lw(R31, R30, Word32.fromInt 0); Lw(R30, R30, Word32.fromInt (-4))](*; J("printInt")]*)
+  [Add(R29, R30, Immed(Word32.fromInt 4)); Lw(R31, R30, Word32.fromInt 0); Lw(R30, R30, Word32.fromInt (-4)); Jr(R31)](*; J("printInt")]*)
 )
 
 let rec compile (p : Ast.program) : result = 
