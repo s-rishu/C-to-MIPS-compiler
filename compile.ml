@@ -91,7 +91,7 @@ let rec compile_stmt ((s,_):Ast.stmt) (offset_table) : inst list =
                 | Gt -> [Sgt(R2,R3,R2)]
                 | Gte -> [Sge(R2,R3,R2)]
             ))
-        | Not(e) -> (compile_exp e) @ [Seq(R2,R2,R3)]                    
+        | Not(e) -> (compile_exp e) @ [Seq(R2,R2,R0)]                    
         | And(e1, e2) -> (
             [Add(R3, R0, Immed(Word32.fromInt 4)); Sub(R29, R29, R3)] @ (*allocate stack space for temp*)
             (compile_exp e1) @ [Sw(R2,R29,Word32.fromInt (0)) (*push temp*)]
@@ -153,7 +153,7 @@ let callee_prologue (fn: Ast.funcsig) = (
 
 let callee_epilogue (): inst list = (
   (* reset sp, ra, fp, jump to ra *)
-  [Add(R29, R30, Immed(Word32.fromInt 4)); Lw(R31, R30, Word32.fromInt 0); Lw(R30, R30, Word32.fromInt (-4)); Jr(R31)](*; J("printInt")]*)
+  [Add(R29, R30, Immed(Word32.fromInt 4)); Lw(R31, R30, Word32.fromInt 0); Lw(R30, R30, Word32.fromInt (-4)); Jr(R31)](* Jr(R31)]; J("printInt")]*)
 )
 
 let rec compile (p : Ast.program) : result = 
